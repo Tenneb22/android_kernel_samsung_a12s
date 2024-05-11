@@ -37,6 +37,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: TG
     steps:
     - uses: actions/checkout@v4
       with:
@@ -64,7 +65,6 @@ jobs:
         export KSU_BRANCH=$KERNELSU_BRANCH_INPUT
         export KSU_STATE=$KERNELSU_STATE_INPUT
         export GIT_UPLOAD_GZ=$UPLOAD_IMAGE_GZ
-        export GIT_UPLOAD_UNCOMPRESSED_BOOT_IMG=$UPLOAD_UNCOMPRESSED_BOOT_IMG
         export SELINUX_STATE=$SELINUX_STATE_INPUT
         bash $(pwd)/build.sh
         zipName=`cat $(pwd)/zipfile_format.txt` && echo "zipName=$zipName" >> $GITHUB_OUTPUT
@@ -76,15 +76,8 @@ jobs:
         KERNELSU_STATE_INPUT: ${{ github.event.inputs.KERNELSU_SUPPORT }}
         SELINUX_STATE_INPUT: ${{ github.event.inputs.USE_PERMISSIVE }}
         UPLOAD_IMAGE_GZ: ${{ github.event.inputs.UPLOAD_IMAGE_GZ }}
-        UPLOAD_UNCOMPRESSED_BOOT_IMG: ${{ github.event.inputs.UPLOAD_UNCOMPRESSED_BOOT_IMG }}
       working-directory: android_kernel_samsung_a12s
-    - name: Upload .tar.xz
-      uses: actions/upload-artifact@v4.3.1
-      with:
-        name: ${{ steps.buildKernel.outputs.imgName }}
-        path: android_kernel_samsung_a12s/Rissu/*.tar.xz
     - name: Upload .img
-      if: env.UPLOAD_UNCOMPRESSED_BOOT_IMG == true
       uses: actions/upload-artifact@v4.3.1
       with:
         name: ${{ steps.buildKernel.outputs.imgName }}

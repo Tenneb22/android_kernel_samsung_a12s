@@ -1771,7 +1771,6 @@ void nvt_ts_proximity_report(uint8_t *data)
 
 }
 #endif
-
 /*******************************************************
 Description:
 	Novatek touchscreen work function.
@@ -2255,7 +2254,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		goto err_input_dev_prox_alloc_failed;
 	}
 #endif
-
+        
 	ts->platdata->max_touch_num = TOUCH_MAX_FINGER_NUM;
 
 #if TOUCH_KEY_NUM > 0
@@ -2318,7 +2317,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	ts->input_dev_proximity->phys = ts->phys;
 	ts->input_dev_proximity->id.bustype = BUS_SPI;
 #endif
-
+        
 	//---register input device---
 	ret = input_register_device(ts->input_dev);
 	if (ret) {

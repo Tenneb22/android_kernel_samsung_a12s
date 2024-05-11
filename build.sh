@@ -158,7 +158,7 @@ pre_build_stage() {
 		fi
 		export KSU_VERSION_TAGS=$(cd KernelSU && git describe --tags)
 		export KSU_COMMIT_COUNT=$(cd KernelSU && git rev-list --count HEAD)
-		export KSU_VERSION_NUMBER=$(expr 10000 + $KSU_COMMIT_COUNT + 200)
+		export KSU_VERSION_NUMBER=$(expr 10200 + $KSU_COMMIT_COUNT)
 		
 		FMT="`echo $KERNEL_STRINGS`-`echo $REV`-`echo $REAL_STATE`-ksu-`echo $KSU_VERSION_NUMBER`_`echo $KSU_VERSION_TAGS`"
 		BUILD_FLAGS="CONFIG_KSU=y"
@@ -194,12 +194,20 @@ export ANDROID_MAJOR_VERSION=t
 export PLATFORM_VERSION=13
 
 # TOOLCHAINS
-# Rissu use a custom mount point.
 if [ ! -d /rsuntk ]; then
-	export ANDROID_CC_PATH="$(pwd)/toolchains/google/bin"
-	export LLVM_PATH="$(pwd)/toolchains/clang/bin"
-	export GCC_PATH="$(pwd)/toolchains/gnu/bin"
+	if [[ $ENV_IS_CI = 'true' ]]; then
+		# CI default toolchain path
+		export ANDROID_CC_PATH="$(pwd)/toolchains/google/bin"
+		export LLVM_PATH="$(pwd)/toolchains/clang/bin"
+		export GCC_PATH="$(pwd)/toolchains/gnu/bin"
+	else
+		# Your own path.
+		export ANDROID_CC_PATH=
+		export LLVM_PATH=
+		export GCC_PATH=
+	fi
 else
+	# Rissu use a custom mount point.
 	export ANDROID_CC_PATH="/rsuntk/env/google/bin"
 	export LLVM_PATH="/rsuntk/env/clang-11/bin"
 	export GCC_PATH="/rsuntk/env/gnu/bin"
@@ -256,43 +264,53 @@ printf "#! /usr/bin/env bash
 make -C $(pwd) O=$(pwd)/out CONFIG_LOCALVERSION=\"-`echo $KERNEL_STRINGS`\" `echo $BUILD_FLAGS` `echo $DEFCONFIG`
 make -C $(pwd) O=$(pwd)/out CONFIG_LOCALVERSION=\"-`echo $KERNEL_STRINGS`\" `echo $BUILD_FLAGS` `echo $THREADCOUNT`" > make_cmd.sh
 
+## Rissu Kernel Project things.
 make_boot() {
 	cd $RSUPATH
 	cat $RSUPATH/art.txt
 	tar -xf $OEMBOOT -C $RSUPATH
 	echo "";
+	## << Unpack boot with magiskboot
 	echo "- Unpacking boot"
 	$MGSKBOOT unpack $RSUPATH/boot.img 2>/dev/null
+	## << Remove stock samsung kernel
 	rm $RSUPATH/kernel
+	## << Copy new kernel to current path
 	cp $OUTDIR/arch/$ARCH/boot/Image $RSUPATH/kernel
+	## << Create flashable AnyKernel3
 	echo "- Creating AnyKernel3"
 	bash $RSUPATH/mk_version
 	cp $OUTDIR/arch/$ARCH/boot/Image $ANYKERNEL3
-	zip -r $RSUPATH/$ANYKERNEL3_FMT $ANYKERNEL3
+	cd $ANYKERNEL3
+	zip -0 -r $RSUPATH/$ANYKERNEL3_FMT *
+	cd $RSUPATH
+	## << Repacking boot
 	echo "- Repacking boot"
 	$MGSKBOOT repack $RSUPATH/boot.img 2>/dev/null
 	rm $RSUPATH/boot.img
 	mv $RSUPATH/new-boot.img $RSUPATH/boot.img
+	## << Compress it, to avoid long download time
 	echo "- Compressing with lz4"
 	lz4 -B6 --content-size boot.img boot.img.lz4 2>/dev/null
+	## << Make it ODIN flashable
 	echo "- Creating tarball file"
 	tar -cf $TAR_FMT boot.img.lz4
 	rm $RSUPATH/boot.img.lz4
+	## << Pack boot.img to tar.xz with Level 9 Extreme flags
 	echo "- Creating boot file"
-	echo "- Compressing boot file"
-	tar -cJf - boot.img | xz -9e -c - > $BOOT_FMT.tar.xz
 	echo "- Done!"
 	echo "- Cleaning files"
-	if [[ $GIT_UPLOAD_UNCOMPRESSED_BOOT_IMG = "true" ]]; then
-		mv $RSUPATH/boot.img $RSUPATH/$BOOT_FMT
-	else
-		rm $RSUPATH/boot.img
-	fi
+	mv $RSUPATH/boot.img $RSUPATH/$BOOT_FMT
 	rm $RSUPATH/kernel && rm $RSUPATH/dtb
 	if [ -f $RSUPATH/ramdisk.cpio ]; then
 		rm $RSUPATH/ramdisk.cpio
 	fi
 	cd ..
+}
+
+purify_anykernel3_folder() {
+	rm $ANYKERNEL3/Image
+	rm $ANYKERNEL3/version
 }
 
 cleanups() {
@@ -320,6 +338,10 @@ if [ -f $MAKE_SH ]; then
 	else
 		BUILD_STATE=1
 	fi
+	# Have some known issue in here. This indicator cannot detect
+	# kernel module building. If something failed, well, it keep
+	# detecting as successful.
+	
 	echo "- Build state: $BUILD_STATE"
 	if [[ $BUILD_STATE = '0' ]]; then
 		if [[ $GIT_UPLOAD_GZ = "true" ]]; then
@@ -327,6 +349,9 @@ if [ -f $MAKE_SH ]; then
 		fi
 		echo "- Build ended at `date`. Creating boot.img"
 		make_boot;
+		if [[ $ENV_IS_CI != 'true' ]]; then
+			purify_anykernel3_folder;
+		fi
 	else
 		echo "- Build ended at `date`. with status: $BUILD_STATE."
 	fi
